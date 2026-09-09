@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gráfica de Control de Variables</title>
+    <!-- Enlace a los estilos CSS -->
+    <link rel="stylesheet" href="estilos.css">
+    <!-- Chart.js para renderizar la gráfica -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Monitoreo de Gráfica de Control</h1>
+            <p>Seleccione un caso de prueba para analizar el comportamiento de la variable y detectar posibles anomalías.</p>
+        </header>
+
+        <!-- Selector de Casos -->
+        <div class="control-panel">
+            <label for="caseSelect">Seleccionar Caso:</label>
+            <select id="caseSelect">
+                <option value="1">Caso 1: Fuera de control</option>
+                <option value="2" selected>Caso 2: Normal</option>
+                <option value="3">Caso 3: Tendencia (2 de 3 puntos fuera de 2-sigma)</option>
+                <option value="4">Caso 4: Tendencia (4 de 5 puntos consecutivos fuera de sigma)</option>
+                <option value="5">Caso 5: Tendencia (8 puntos consecutivos del mismo lado)</option>
+            </select>
+        </div>
+
+        <!-- Contenedor para Alertas Textuales -->
+        <div id="alertContainer" class="alert hidden">
+            <!-- Aquí se inyectará dinámicamente la alerta -->
+        </div>
+
+        <!-- Contenedor del Gráfico -->
+        <div class="chart-container">
+            <canvas id="controlChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Enlace al script de JavaScript -->
+    <script src="funciones.js"></script>
+</body>
+</html>
