@@ -17,7 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchDataAndRender(casoId) {
     try {
-        const response = await fetch(`${API_BASE_URL}${casoId}`);
+        const response = await fetch(`${API_BASE_URL}${casoId}`, {
+            cache: 'no-store'
+        });
         const result = await response.json();
 
         if (result.success && result.data && result.data.length > 0) {
@@ -33,100 +35,175 @@ async function fetchDataAndRender(casoId) {
 }
 
 function processAndRenderChart(dataObj, casoId) {
-    const { media, lsc, lic, valores } = dataObj;
-    
+
+    const media = Number(dataObj.media);
+    const lsc = Number(dataObj.lsc);
+    const lic = Number(dataObj.lic);
+    const valores = dataObj.valores;
+
     const labels = valores.map(v => `T: ${v.x}`);
-    const valuesY = valores.map(v => v.y);
+    const valuesY = valores.map(v => Number(v.y));
 
-    // Cálculo de límites Sigma para las reglas de análisis
-    // Desviación estándar aproximada dividiendo el rango (LSC - Media) entre 3
-    const sigma = (lsc - media) / 3;
-    const lsc2sigma = media + (2 * sigma);
-    const lic2sigma = media - (2 * sigma);
-    const lsc1sigma = media + (1 * sigma);
-    const lic1sigma = media - (1 * sigma);
+    // Distancia de la media a cada límite.
+    // Los límites de control representan aproximadamente 3 sigma.
+    const sigmaSuperior = (lsc - media) / 3;
+    const sigmaInferior = (media - lic) / 3;
 
-    // Análisis de anomalías y alertas según el requerimiento del caso
-    let alertMessage = "";
+    // Límites de 2 sigma
+    const lsc2sigma = media + (2 * sigmaSuperior);
+    const lic2sigma = media - (2 * sigmaInferior);
+
+    // Límites de 1 sigma
+    const lsc1sigma = media + sigmaSuperior;
+    const lic1sigma = media - sigmaInferior;
+
+    // ------------------------------------------------
+    // COMPROBAR TODAS LAS REGLAS
+    // ------------------------------------------------
+
+    // Regla 1:
+    // Un punto fuera de los límites de control
+    const regla1 = valuesY.some(
+        y => y > lsc || y < lic
+    );
+
+    // Regla 2:
+    // 2 de 3 puntos más allá de 2 sigma
+    const regla2 = checkRule2Of3(
+        valuesY,
+        lsc2sigma,
+        lic2sigma
+    );
+
+    // Regla 3:
+    // 4 de 5 puntos más allá de 1 sigma
+    const regla3 = checkRule4Of5(
+        valuesY,
+        lsc1sigma,
+        lic1sigma
+    );
+
+    // Regla 4:
+    // 8 puntos consecutivos del mismo lado de la media
+    const regla4 = checkRule8Consecutive(
+        valuesY,
+        media
+    );
+
+    // mensajes
+
     let isAnomaly = false;
+    let alertMessage = "";
 
-    switch (casoId) {
-        case 1:
-            // Caso 1: Fuera de control (Puntos fuera de LSC o LIC)
-            const fueraControl = valuesY.some(y => y > lsc || y < lic);
-            if (fueraControl) {
-                isAnomaly = true;
-                alertMessage = "¡Alerta! Se detectaron puntos fuera de los Límites de Control (LSC / LIC). Situación fuera de control.";
-            }
-            break;
-        case 2:
-            // Caso 2: Normal
-            isAnomaly = false;
-            alertMessage = "El proceso se encuentra dentro de parámetros normales.";
-            break;
-        case 3:
-            // Caso 3: 2 de 3 puntos consecutivos fuera de 2-sigma (del mismo lado)
-            isAnomaly = checkRule2Of3(valuesY, lsc2sigma, lic2sigma, media);
-            if (isAnomaly) {
-                alertMessage = "¡Alerta preventiva! Se detectaron 2 de 3 puntos consecutivos más allá de 2-sigma.";
-            } else {
-                alertMessage = "Proceso estable bajo los parámetros del Caso 3.";
-            }
-            break;
-        case 4:
-            // Caso 4: 4 de 5 puntos consecutivos más allá de 1-sigma
-            isAnomaly = checkRule4Of5(valuesY, lsc1sigma, lic1sigma, media);
-            if (isAnomaly) {
-                alertMessage = "¡Alerta preventiva! Se detectaron 4 de 5 puntos consecutivos más allá de 1-sigma.";
-            } else {
-                alertMessage = "Proceso estable bajo los parámetros del Caso 4.";
-            }
-            break;
-        case 5:
-            // Caso 5: 8 puntos consecutivos del mismo lado de la línea central
-            isAnomaly = checkRule8Consecutive(valuesY, media);
-            if (isAnomaly) {
-                alertMessage = "¡Alerta preventiva! Se detectaron 8 puntos consecutivos del mismo lado de la línea central (Media).";
-            } else {
-                alertMessage = "Proceso estable bajo los parámetros del Caso 5.";
-            }
-            break;
-        default:
-            alertMessage = "";
+    // Regla 1: realmente hay puntos fuera de los límites
+    if (regla1) {
+
+        isAnomaly = true;
+
+        alertMessage =
+            "¡Alerta! El proceso se encuentra fuera de los límites de control. " +
+            "Se detectaron uno o más puntos por encima del LSC o por debajo del LIC.";
+
     }
 
-    // Actualizar Alerta en pantalla
+    // Regla 2: patrón de 2 de 3
+    else if (regla2) {
+
+        isAnomaly = true;
+
+        alertMessage =
+            "¡Alerta preventiva! Se detectaron 2 de 3 puntos consecutivos " +
+            "más allá de 2-sigma del mismo lado.";
+
+    }
+
+    // Regla 3: patrón de 4 de 5
+    else if (regla3) {
+
+        isAnomaly = true;
+
+    alertMessage =
+        "¡Alerta preventiva! Se detectaron 4 de 5 puntos consecutivos " +
+        "más allá de 1-sigma del mismo lado.";
+
+    }
+
+    // Regla 4: 8 consecutivos del mismo lado
+    else if (regla4) {
+
+        isAnomaly = true;
+
+        alertMessage =
+            "¡Alerta preventiva! Se detectaron 8 puntos consecutivos " +
+            "del mismo lado de la línea central.";
+
+    }
+
+    // Ninguna regla detectada
+    else {
+
+        isAnomaly = false;
+
+        alertMessage =
+            `Caso ${casoId}: el proceso se encuentra bajo control.`;
+    }
+
+    // Mostrar resultado
     updateAlertUI(alertMessage, isAnomaly);
 
-    // Preparar líneas de referencia constantes para la gráfica
-    const mediaArray = new Array(valores.length).fill(media);
-    const lscArray = new Array(valores.length).fill(lsc);
-    const licArray = new Array(valores.length).fill(lic);
+    // Líneas del gráfico
+    const mediaArray =
+        new Array(valores.length).fill(media);
 
-    // Renderizar o actualizar gráfico con Chart.js
-    renderChart(labels, valuesY, mediaArray, lscArray, licArray);
+    const lscArray =
+        new Array(valores.length).fill(lsc);
+
+    const licArray =
+        new Array(valores.length).fill(lic);
+
+    renderChart(
+        labels,
+        valuesY,
+        mediaArray,
+        lscArray,
+        licArray
+    );
 }
 
 // Funciones de validación de reglas estadísticas
-function checkRule2Of3(values, lsc2, lic2, media) {
+function checkRule2Of3(values, lsc2, lic2) {
     if (values.length < 3) return false;
+
     for (let i = 0; i <= values.length - 3; i++) {
+
         const sub = values.slice(i, i + 3);
+
         const aboveCount = sub.filter(y => y > lsc2).length;
         const belowCount = sub.filter(y => y < lic2).length;
-        if (aboveCount >= 2 || belowCount >= 2) return true;
+
+        if (aboveCount >= 2 || belowCount >= 2) {
+            return true;
+        }
     }
+
     return false;
 }
 
-function checkRule4Of5(values, lsc1, lic1, media) {
+function checkRule4Of5(values, lsc1, lic1) {
     if (values.length < 5) return false;
+
     for (let i = 0; i <= values.length - 5; i++) {
+
         const sub = values.slice(i, i + 5);
+
         const aboveCount = sub.filter(y => y > lsc1).length;
         const belowCount = sub.filter(y => y < lic1).length;
-        if (aboveCount >= 4 || belowCount >= 4) return true;
+
+        if (aboveCount >= 4 || belowCount >= 4) {
+            return true;
+        }
     }
+
     return false;
 }
 
@@ -151,9 +228,16 @@ function checkRule8Consecutive(values, media) {
 }
 
 function updateAlertUI(message, isDanger) {
+
     alertContainer.textContent = message;
-    alertContainer.classList.remove('hidden', 'danger', 'success');
-    if (isDanger && message.includes("Alerta")) {
+
+    alertContainer.classList.remove(
+        'hidden',
+        'danger',
+        'success'
+    );
+
+    if (isDanger) {
         alertContainer.classList.add('danger');
     } else {
         alertContainer.classList.add('success');
